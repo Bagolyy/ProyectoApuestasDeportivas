@@ -53,26 +53,25 @@ GO
 CREATE TABLE BET_Apuestas (
 
 	ID INT NOT NULL IDENTITY(1,1),
-	Tipo VARCHAR(16) NOT NULL,
+	Tipo VARCHAR(15) NOT NULL,
 	Cuota DECIMAL(4,2) NOT NULL,
 	CantidadApostada SMALLMONEY NOT NULL,
-	Acertada BIT NOT NULL,
+	Acertada BIT NULL,
 	IDPartido INT NOT NULL,
 	CorreoUsuario VARCHAR(50) NOT NULL,
 	Resultado CHAR(1) NULL,
 	[Over/Under] DECIMAL(2,1) NULL,
-	GolesLocal TINYINT NULL,
-	GolesVisitante TINYINT NULL,
-	
+	GolesLocal_Visitante DECIMAL(2,1) NULL,		--Local --> Parte entera DECIMAL
+												--Visitante --> Parte decimal DECIMAL
+
 	CONSTRAINT PKApuestas PRIMARY KEY(ID),
 	CONSTRAINT FKApuestasPartidos FOREIGN KEY(IDPartido) REFERENCES BET_Partidos(ID) ON DELETE NO ACTION ON UPDATE CASCADE,
 	CONSTRAINT FKApuestasUsuarios FOREIGN KEY(CorreoUsuario) REFERENCES BET_Usuarios(CorreoElectronico) ON DELETE NO ACTION ON UPDATE CASCADE,
 	CONSTRAINT CKCuota CHECK(Cuota > 1.00),
-	CONSTRAINT CKGolesLocalApuesta CHECK (GolesLocal > 0),
-	CONSTRAINT CKGolesVisitanteApuesta CHECK (GolesVisitante > 0),
 	CONSTRAINT CKTipo CHECK (Tipo IN ('GanadorPartido', 'Over/under', 'ResultadoExacto')),
 	CONSTRAINT CKResultado CHECK (Resultado IN ('1', 'x', '2')),
-	CONSTRAINT CKOverUnder CHECK ([Over/Under] % 0.5 = 0)
+	CONSTRAINT CKOverUnder CHECK ([Over/Under] % 0.5 = 0),
+	CONSTRAINT CKGolesLocal_Visitante CHECK (GolesLocal_Visitante >= 0.0)
 	 
 )
 GO
