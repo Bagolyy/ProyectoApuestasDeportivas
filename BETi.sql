@@ -8,7 +8,7 @@ CREATE TABLE BET_Usuarios (
 
 	CorreoElectronico VARCHAR(50) NOT NULL,
 	Contraseña VARCHAR(128) NOT NULL,
-	Saldo MONEY NOT NULL,
+	Saldo MONEY NOT NULL DEFAULT 0,
 	
 	CONSTRAINT PKUsuarios PRIMARY KEY(CorreoElectronico),
 	CONSTRAINT CKCorreoElectronico CHECK (CorreoElectronico LIKE '%@%.%'),
