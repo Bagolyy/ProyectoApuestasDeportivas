@@ -69,6 +69,7 @@ GO
 --	Signtaura: CREATE FUNCTION GenerarCuota (@Tipo TINYINT, @IDPartido INT, @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL)
 --	Entradas: los datos de la apuesta excepto el usuario y la cantidad apostada.
 --	Salidas: la cuota generada aleatoriamente.
+--	Postcondición: se devuelve el valor de la cuota actualizada.
 
 CREATE PROCEDURE GenerarCuota @Tipo TINYINT, @IDPartido INT, @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL, @Cuota DECIMAL(4,2)OUTPUT AS
 
@@ -90,8 +91,9 @@ GO
 --	Entradas: el tipo de apuesta, la cantidad apostada, el ID del partido al que se apuesta, el correo que identifica al usuario apostante y la apuesta en concreto que se realiza.
 --	Nota: el tipo de apuesta (TINYINT) rebicirá un valor entre 1 y 3. Cada valor se corresponderá con:  1 --> GanadorPartido
 --		2 --> Over/under
---		3 --> ResultadoExacto		
---	Salidas: se graba en la tabla apuesta la correspondiente apuesta con los datos especificados.
+--		3 --> ResultadoExacto	
+--	Salidas: ninguna.	
+--	Postcondición: se graba en la tabla apuesta la correspondiente apuesta con los datos especificados.
 
 CREATE PROCEDURE RealizarApuesta @TipoApuesta TINYINT, @CantidadApostada SMALLMONEY, @IDPartido INT, @CorreoUsuario VARCHAR(50), @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL AS
 
@@ -137,6 +139,51 @@ CREATE PROCEDURE RealizarApuesta @TipoApuesta TINYINT, @CantidadApostada SMALLMO
 				THROW 56000, @Message, 1
 
 			END
+
+	END
+
+GO
+
+--Estudio Interfaz
+--	Propósito: grabar en la tabla partidos todas las combinaciones posibles entre los equipos que participan en la competición. Se establecerán todos los partidos como no finalizados para que se puedan realizar las apuestas.
+--	Signatura: CREATE PROCEDURE PoblarPartidos
+--	Entradas: ninguna.
+--	Salidas: ninguna. 
+--	Postcondición: quedan grabadas todas las combinaciones en la tabla Partidos.
+
+CREATE PROCEDURE PoblarPartidos AS
+
+	BEGIN
+
+		INSERT INTO BET_Partidos (IDEquipoLocal, IDEquipoVisitante)
+		SELECT L.ID, V.ID FROM BET_Equipos AS L CROSS JOIN BET_Equipos AS V WHERE L.ID != V.ID
+
+		DECLARE CPartidos CURSOR FOR SELECT ID FROM BET_Partidos
+		DECLARE @Partido SMALLINT
+		DECLARE @FechaPartido SMALLDATETIME
+		DECLARE @DiasAux SMALLINT
+		DECLARE @HorasAux TINYINT
+
+		OPEN CPartidos
+
+		FETCH NEXT FROM CPartidos INTO @Partido
+
+		WHILE @@FETCH_STATUS = 0
+			BEGIN
+
+				SET @DiasAux = @DiasAux + 7
+				SET @FechaPartido = DATEADD(DAY, @DiasAux, @FechaPartido)
+
+				UPDATE BET_Partidos
+				SET GolesLocal = 0, GolesVisitante = 0, Apostable = 0, Finalizado = 0, Fecha = @FechaPartido
+				WHERE 
+
+				FETCH NEXT FROM CPartidos INTO @Partido
+
+			END
+
+		CLOSE CPartidos
+		DEALLOCATE CPartidos
 
 	END
 
