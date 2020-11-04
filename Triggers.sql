@@ -103,6 +103,7 @@ CREATE PROCEDURE RealizarApuesta @TipoApuesta TINYINT, @CantidadApostada SMALLMO
 
 		DECLARE @Tipo VARCHAR(15)
 		DECLARE @Cuota DECIMAL(4,2)
+		DECLARE @IDApuesta SMALLINT 	
 
 		SET @Tipo = ( CASE 
 						WHEN @TipoApuesta = 1 THEN 'GanadorPartido'
@@ -124,10 +125,15 @@ CREATE PROCEDURE RealizarApuesta @TipoApuesta TINYINT, @CantidadApostada SMALLMO
 				--Insertamos la nueva apuesta
 				INSERT INTO BET_Apuestas VALUES(@TipoApuesta, @Tipo, @Cuota, @CantidadApostada, @IDPartido, @CorreoUsuario, @Resultado, @Over_under, @GolesLocal_Visitante)
 
+				SET @IDApuesta = (SELECT ID FROM BET_Apuestas WHERE ID = @@IDENTITY)
+
 				--Actualizamos el saldo del usuario
 				UPDATE BET_Usuarios
 				SET Saldo = Saldo - @CantidadApostada
 				WHERE CorreoElectronico = @CorreoUsuario
+
+				--Insertamos el nuevo movimiento
+				INSERT INTO BET_Movimientos VALUES (@CorreoUsuario, @CantidadApostada, @IDApuesta)
 
 			END
 
@@ -164,6 +170,8 @@ CREATE PROCEDURE PoblarPartidos AS
 		DECLARE @DiasAux SMALLINT
 		DECLARE @HorasAux TINYINT
 
+		SET @DiasAux = 0
+
 		OPEN CPartidos
 
 		FETCH NEXT FROM CPartidos INTO @Partido
@@ -171,12 +179,12 @@ CREATE PROCEDURE PoblarPartidos AS
 		WHILE @@FETCH_STATUS = 0
 			BEGIN
 
-				SET @DiasAux = @DiasAux + 7
-				SET @FechaPartido = DATEADD(DAY, @DiasAux, @FechaPartido)
+				SET @DiasAux = @DiasAux + 2
+				SET @FechaPartido = DATEADD(DAY, @DiasAux, GETDATE())
 
 				UPDATE BET_Partidos
 				SET GolesLocal = 0, GolesVisitante = 0, Apostable = 0, Finalizado = 0, Fecha = @FechaPartido
-				WHERE 
+				WHERE @Partido = ID
 
 				FETCH NEXT FROM CPartidos INTO @Partido
 
@@ -189,6 +197,31 @@ CREATE PROCEDURE PoblarPartidos AS
 
 GO
 
+--Estudio Interfaz
+--	Propósito: grabar en la tabla movimientos el dinero ganado tras una apuesta acertada. También se actualiza la 
+--  tabla apuestas (Acertada)
+--	Signatura: CREATE PROCEDURE GrabarMovimientoApuesta @IDApuesta INT
+--	Entradas: la apuesta
+--	Salidas: ninguna
+--	Postcondición: genera un nuevo movimiento, en el que se ingresa la cantidad ganada por la apuesta, y se modifica
+--  la apuesta correspondiente, donde se marcará dicha apuesta como acertada.
+
+CREATE PROCEDURE GrabarMovimientoApuesta @IDApuesta INT AS
+
+	BEGIN
+
+		--Grabar movimiento
+		INSERT INTO BET_Movimientos 
+		SELECT CorreoUsuario, Cuota * CantidadApostada AS [Beneficio], ID FROM BET_Apuestas
+		WHERE @IDApuesta = ID 
+
+		--Actualizar la tabla apuesta
+		UPDATE BET_Apuestas
+		SET Acertada = 1 WHERE @IDApuesta = ID
+
+	END
+
+GO
 
 --TRIGGERS
 
