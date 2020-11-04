@@ -1,4 +1,7 @@
 
+--Comprobar premio supera máximo fijado.
+
+
 USE BETi
 GO
 
@@ -15,6 +18,9 @@ You do not have enough money', @lang = 'us_english', @replace = 'replace';
 EXECUTE sys.sp_addmessage @msgnum = 56000, @severity = 16, @msgtext = N'No posee saldo suficiente', @lang = 'spanish', @replace = 'replace';
 GO
 
+EXECUTE sys.sp_addmessage @msgnum = 57000, @severity = 16, @msgtext = N'The match is not in the bettable time range', @lang = 'us_english', @replace = 'replace';
+EXECUTE sys.sp_addmessage @msgnum = 57000, @severity = 16, @msgtext = N'El partido no se encuentra en el rango de tiempo apostable', @lang = 'spanish', @replace = 'replace';
+GO
 
 --FUNCIONES
 
@@ -180,7 +186,7 @@ CREATE PROCEDURE PoblarPartidos AS
 			BEGIN
 
 				SET @DiasAux = @DiasAux + 2
-				SET @FechaPartido = DATEADD(DAY, @DiasAux, GETDATE())
+				SET @FechaPartido = DATEADD(DAY, @DiasAux, CAST(GETDATE() AS SMALLDATETIME))
 
 				UPDATE BET_Partidos
 				SET GolesLocal = 0, GolesVisitante = 0, Apostable = 0, Finalizado = 0, Fecha = @FechaPartido
@@ -219,9 +225,81 @@ CREATE PROCEDURE GrabarMovimientoApuesta @IDApuesta INT AS
 		UPDATE BET_Apuestas
 		SET Acertada = 1 WHERE @IDApuesta = ID
 
+		--Actualizamos el saldo del usuario
+		UPDATE BET_Usuarios
+		SET Saldo = Saldo + (A.Cuota * A.CantidadApostada)
+		FROM BET_Usuarios AS U
+		INNER JOIN BET_Apuestas AS A
+		ON U.CorreoElectronico = A.CorreoUsuario
+		WHERE A.ID = @IDApuesta 
+
 	END
 
 GO
+
+--Estudio Interfaz
+--	Propósito: actualizar el saldo del usuario tras realizar un ingreso de saldo.
+--	Signatura: CREATE PROCEDURE IngresarDinero @CorreoUsuario VARCHAR(50), @CantidadIngresar MONEY
+--	Entradas: el correo del usuario y la cantidad a ingresar.
+--	Salidas: ninguna.
+--	Postcondiciones: se actualiza el saldo del usuario.
+
+CREATE PROCEDURE IngresarDinero @CorreoUsuario VARCHAR(50), @CantidadIngresar MONEY AS
+
+	BEGIN
+
+		UPDATE BET_Usuarios 
+		SET Saldo = Saldo + @CantidadIngresar
+		WHERE CorreoElectronico = @CorreoUsuario
+
+		INSERT INTO BET_Movimientos
+		VALUES(@CorreoUsuario, @CantidadIngresar, NULL)
+
+	END
+
+GO
+
+--Estudio Interfaz
+--	Propósito: actualizar el saldo del usuario tras realizar una retirada de saldo.
+--	Signatura: CREATE PROCEDURE RetirarDinero @CorreoUsuario VARCHAR(50), @CantidadRetirar MONEY
+--	Entradas: el correo del usuario y la cantidad a retirar.
+--	Salidas: ninguna.
+--	Postcondiciones: se actualiza el saldo del usuario.
+
+CREATE PROCEDURE RetirarDinero @CorreoUsuario VARCHAR(50), @CantidadRetirar MONEY AS
+
+	BEGIN
+
+		UPDATE BET_Usuarios 
+		SET Saldo = Saldo - @CantidadRetirar
+		WHERE CorreoElectronico = @CorreoUsuario
+
+		DECLARE @SaldoUsuario MONEY
+		SET @SaldoUsuario = (SELECT Saldo FROM BET_Usuarios WHERE CorreoElectronico = @CorreoUsuario)
+
+		IF( @SaldoUsuario < 0.0)
+			BEGIN
+				UPDATE BET_Usuarios 
+				SET Saldo = 0
+				WHERE CorreoElectronico = @CorreoUsuario
+			END
+
+		INSERT INTO BET_Movimientos
+		VALUES(@CorreoUsuario, @CantidadRetirar, NULL)
+
+	END
+
+GO
+
+
+--FUNCIONES
+
+--Estudio Interfaz
+--	Propósito: comprobar si los premios de una 
+--	
+
+CREATE FUNCTION ComprobarSuperaMaximo
+
 
 --TRIGGERS
 
@@ -231,6 +309,27 @@ CREATE TRIGGER ModificarApuesta ON BET_Apuestas INSTEAD OF UPDATE, DELETE AS
 
 		DECLARE @Message NVARCHAR(255) = FormatMessage(55000);
 		THROW 55000, @Message, 1
+
+	END
+GO
+
+--Trigger que comprueba que, al realizar una apuesta, el partido al que se apuesta, sea apostable. 
+--En caso de que no se pueda apostar, lanzará un mensaje.
+CREATE TRIGGER ComprobarPartidoApostable ON BET_Apuestas INSTEAD OF INSERT AS
+	BEGIN
+		
+		DECLARE @FechaPartido SMALLDATETIME
+		
+		SELECT @FechaPartido = P.Fecha FROM inserted AS I INNER JOIN BET_Partidos AS P ON I.IDPartido = P.ID
+
+		IF(CAST(GETDATE() AS smalldatetime) < DATEADD(DAY, -2, @FechaPartido) OR CAST(GETDATE() AS smalldatetime) > @FechaPartido)
+
+			BEGIN
+
+				DECLARE @Message NVARCHAR(255) = FormatMessage(57000);
+				THROW 57000, @Message, 1
+
+			END
 
 	END
 GO
