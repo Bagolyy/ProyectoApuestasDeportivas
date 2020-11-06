@@ -1,3 +1,8 @@
+--Proyecto realizado por: 
+--Juan Antonio Quintero
+--Alejandro Gata
+--Jaime Albarrán
+
 CREATE DATABASE BETi
 GO
 

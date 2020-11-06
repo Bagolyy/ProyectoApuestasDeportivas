@@ -1,4 +1,3 @@
-
 USE BETi
 GO
 
@@ -55,6 +54,7 @@ CREATE PROCEDURE PoblarUsuarios AS
 
 GO
 
+--Poblamos la tabla usuarios
 EXECUTE PoblarUsuarios
 GO
 
@@ -69,117 +69,11 @@ CREATE PROCEDURE PoblarEquipos AS
 
 GO
 
+--Poblamos la tabla equipos
 EXECUTE PoblarEquipos
 GO
 
---Estudio Interfaz
---	Propósito: generar una cuota que será aplicada a una apuesta determinada.
---	Signtaura: CREATE FUNCTION GenerarCuota (@Tipo TINYINT, @IDPartido INT, @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL)
---	Entradas: los datos de la apuesta excepto el usuario y la cantidad apostada.
---	Salidas: la cuota generada aleatoriamente.
---	Postcondición: se devuelve el valor de la cuota actualizada.
-
-CREATE PROCEDURE GenerarCuota @Tipo TINYINT, @IDPartido INT, @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL, @Cuota DECIMAL(4,2)OUTPUT AS
-
-	BEGIN
-
-		--En resguardo	
-		DECLARE @CuotaAleatoria FLOAT
-		SET @CuotaAleatoria = round((rand() * 14) + 1, 2)
-		SET @Cuota = CAST(@CuotaAleatoria AS DECIMAL(4,2))
-
-	END
-	
-GO	 
-
-DECLARE @Cuota DECIMAL(4,2)
-EXECUTE GenerarCuota 1, 1, '1', NULL, NULL, @Cuota OUTPUT
-GO
-
---Estudio Interfaz
---	Propósito: registrar una apuesta de un determinado tipo, realizada por un usuario, a un determinado partido.
---	Signatura: CREATE PROCEDURE RealizarApuesta @Tipo VARCHAR(15), @CantidadApostada SMALLMONEY, @IDPartido INT, @CorreoUsuario VARCHAR(50), @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL
---	Entradas: el tipo de apuesta, la cantidad apostada, el ID del partido al que se apuesta, el correo que identifica al usuario apostante y la apuesta en concreto que se realiza.
---	Nota: el tipo de apuesta (TINYINT) rebicirá un valor entre 1 y 3. Cada valor se corresponderá con:  1 --> GanadorPartido
---		2 --> Over/under
---		3 --> ResultadoExacto	
---	Salidas: ninguna.	
---	Postcondición: se graba en la tabla apuesta la correspondiente apuesta con los datos especificados.
-
-ALTER PROCEDURE RealizarApuesta @TipoApuesta TINYINT, @CantidadApostada SMALLMONEY, @IDPartido INT, @CorreoUsuario VARCHAR(50), @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL AS
-
-	BEGIN
-
-		SET NOCOUNT ON;
-
-		DECLARE @Tipo VARCHAR(15)
-		DECLARE @Cuota DECIMAL(4,2)
-		DECLARE @IDApuesta SMALLINT 	
-
-		SET @Tipo = ( CASE 
-						WHEN @TipoApuesta = 1 THEN 'GanadorPartido'
-						WHEN @TipoApuesta = 2 THEN 'Over/under'
-						ELSE 'ResultadoExacto'
-
-						END
-					)
-
-
-		--Comprobamos el saldo del usuario y la cantidad apostada
-		IF(@CantidadApostada <= (SELECT Saldo FROM BET_Usuarios WHERE CorreoElectronico = @CorreoUsuario))
-
-			BEGIN
-	
-				--Generamos una cuota aleatoria
-				EXECUTE GenerarCuota @TipoApuesta, @IDPartido, @Resultado, @Over_under, @GolesLocal_Visitante, @Cuota OUTPUT
-
-				IF([dbo].ComprobarSuperaMaximo(@IDPartido, @Cuota, @TipoApuesta, @CantidadApostada, @Resultado, @Over_under, @GolesLocal_Visitante) = 1)
-
-					BEGIN
-
-						DECLARE @MessageSupera NVARCHAR(255) = FormatMessage(58000);
-						THROW 58000, @MessageSupera, 1
-
-					END
-
-				ELSE
-					BEGIN
-
-						--Insertamos la nueva apuesta
-						INSERT INTO BET_Apuestas VALUES(@Tipo, @Cuota, @CantidadApostada, 0, @IDPartido, @CorreoUsuario, @Resultado, @Over_under, @GolesLocal_Visitante)
-
-						SET @IDApuesta = (SELECT ID FROM BET_Apuestas WHERE ID = @@IDENTITY)
-
-						--Actualizamos el saldo del usuario
-						UPDATE BET_Usuarios
-						SET Saldo = Saldo - @CantidadApostada
-						WHERE CorreoElectronico = @CorreoUsuario
-
-						--Insertamos el nuevo movimiento
-						INSERT INTO BET_Movimientos VALUES (@CorreoUsuario, @CantidadApostada, @IDApuesta)
-
-					END
-
-			END
-
-		ELSE
-			
-			BEGIN
-
-				DECLARE @MessageSaldo NVARCHAR(255) = FormatMessage(56000);
-				THROW 56000, @MessageSaldo, 1
-
-			END
-
-	END
-
-GO
-
-EXECUTE RealizarApuesta 1, 80.0, 1, 'zamit@gmail.com', '1', NULL, NULL
-GO
-
-
---Estudio Interfaz
+--Estudio interfaz
 --	Propósito: grabar en la tabla partidos todas las combinaciones posibles entre los equipos que participan en la competición. Se establecerán todos los partidos como no finalizados para que se puedan realizar las apuestas.
 --	Signatura: CREATE PROCEDURE PoblarPartidos
 --	Entradas: ninguna.
@@ -229,6 +123,132 @@ GO
 EXECUTE PoblarPartidos
 GO
 
+
+SELECT * FROM BET_Partidos
+GO
+
+--Estudio Interfaz
+--	Propósito: generar una cuota que será aplicada a una apuesta determinada.
+--	Signtaura: CREATE FUNCTION GenerarCuota (@Tipo TINYINT, @IDPartido INT, @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL)
+--	Entradas: los datos de la apuesta excepto el usuario y la cantidad apostada.
+--	Salidas: la cuota generada aleatoriamente.
+--	Postcondición: se devuelve el valor de la cuota actualizada.
+
+CREATE PROCEDURE GenerarCuota @Tipo TINYINT, @IDPartido INT, @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL, @Cuota DECIMAL(4,2)OUTPUT AS
+
+	BEGIN
+
+		--En resguardo	
+		DECLARE @CuotaAleatoria FLOAT
+		SET @CuotaAleatoria = round((rand() * 14) + 1, 2)
+		SET @Cuota = CAST(@CuotaAleatoria AS DECIMAL(4,2))
+
+	END
+	
+GO	 
+
+--Probamos el procedimiento GenerarCuota
+DECLARE @Cuota DECIMAL(4,2)
+EXECUTE GenerarCuota 1, 1, '1', NULL, NULL, @Cuota OUTPUT
+PRINT @Cuota
+GO
+
+--Actualizamos la tabla partidos para poner un partido apostable, y asi comprobar si se puede apostar.
+UPDATE BET_Partidos
+SET Apostable = 1
+WHERE ID = 1
+GO
+
+
+--Estudio Interfaz
+--	Propósito: registrar una apuesta de un determinado tipo, realizada por un usuario, a un determinado partido.
+--	Signatura: CREATE PROCEDURE RealizarApuesta @Tipo VARCHAR(15), @CantidadApostada SMALLMONEY, @IDPartido INT, @CorreoUsuario VARCHAR(50), @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL
+--	Entradas: el tipo de apuesta, la cantidad apostada, el ID del partido al que se apuesta, el correo que identifica al usuario apostante y la apuesta en concreto que se realiza.
+--	Nota: el tipo de apuesta (TINYINT) rebicirá un valor entre 1 y 3. Cada valor se corresponderá con:  1 --> GanadorPartido
+--		2 --> Over/under
+--		3 --> ResultadoExacto	
+--	Salidas: ninguna.	
+--	Postcondición: se graba en la tabla apuesta la correspondiente apuesta con los datos especificados.
+
+CREATE PROCEDURE RealizarApuesta @TipoApuesta TINYINT, @CantidadApostada SMALLMONEY, @IDPartido INT, @CorreoUsuario VARCHAR(50), @Resultado CHAR(1) = NULL, @Over_under DECIMAL(4,2) = NULL, @GolesLocal_Visitante DECIMAL(2,1) = NULL AS
+
+	BEGIN
+
+		SET NOCOUNT ON;
+
+		DECLARE @Tipo VARCHAR(15)
+		DECLARE @Cuota DECIMAL(4,2)
+		DECLARE @IDApuesta SMALLINT 	
+
+		SET @Tipo = ( CASE 
+						WHEN @TipoApuesta = 1 THEN 'GanadorPartido'
+						WHEN @TipoApuesta = 2 THEN 'Over/under'
+						ELSE 'ResultadoExacto'
+
+						END
+					)
+
+
+		--Comprobamos el saldo del usuario y la cantidad apostada
+		IF(@CantidadApostada <= (SELECT Saldo FROM BET_Usuarios WHERE CorreoElectronico = @CorreoUsuario))
+
+			BEGIN
+	
+				--Generamos una cuota aleatoria
+				EXECUTE GenerarCuota @TipoApuesta, @IDPartido, @Resultado, @Over_under, @GolesLocal_Visitante, @Cuota OUTPUT
+
+				IF([dbo].ComprobarSuperaMaximo(@IDPartido, @Cuota, @TipoApuesta, @CantidadApostada, @Resultado, @Over_under, @GolesLocal_Visitante) = 1)
+
+					BEGIN
+
+						DECLARE @MessageSupera NVARCHAR(255) = FormatMessage(58000);
+						THROW 58000, @MessageSupera, 1
+
+					END
+
+				ELSE
+					BEGIN
+
+						--Insertamos la nueva apuesta
+						INSERT INTO BET_Apuestas VALUES(@Tipo, @Cuota, @CantidadApostada, 0, @IDPartido, @CorreoUsuario, @Resultado, @Over_under, @GolesLocal_Visitante)
+
+						SET @IDApuesta = @@IDENTITY
+
+						--Actualizamos el saldo del usuario
+						UPDATE BET_Usuarios
+						SET Saldo = Saldo - @CantidadApostada
+						WHERE CorreoElectronico = @CorreoUsuario
+
+						--Insertamos el nuevo movimiento
+						INSERT INTO BET_Movimientos VALUES (@CorreoUsuario, @CantidadApostada, @IDApuesta)
+
+					END
+
+			END
+
+		ELSE
+			
+			BEGIN
+
+				DECLARE @MessageSaldo NVARCHAR(255) = FormatMessage(56000);
+				THROW 56000, @MessageSaldo, 1
+
+			END
+
+	END
+
+GO
+
+EXECUTE RealizarApuesta 1, 2.0, 1, 'zamit@gmail.com', '1', NULL, NULL
+GO
+
+SELECT * FROM BET_Apuestas
+SELECT * FROM BET_Usuarios
+SELECT * FROM BET_Movimientos
+
+
+GO
+
 --Estudio Interfaz
 --	Propósito: grabar en la tabla movimientos el dinero ganado tras una apuesta acertada. También se actualiza la 
 --  tabla apuestas (Acertada)
@@ -261,6 +281,9 @@ CREATE PROCEDURE GrabarMovimientoApuesta @IDApuesta INT AS
 
 	END
 
+GO
+
+EXECUTE GrabarMovimientoApuesta 1
 GO
 
 --Estudio Interfaz
@@ -298,7 +321,7 @@ GO
 --	Salidas: ninguna.
 --	Postcondiciones: se actualiza el saldo del usuario.
 
-ALTER PROCEDURE RetirarDinero @CorreoUsuario VARCHAR(50), @CantidadRetirar MONEY AS
+CREATE PROCEDURE RetirarDinero @CorreoUsuario VARCHAR(50), @CantidadRetirar MONEY AS
 
 	BEGIN
 
@@ -370,13 +393,34 @@ CREATE FUNCTION ComprobarSuperaMaximo (@IDPartido INT, @Cuota DECIMAL(4,2), @Tip
 
 GO
 
+DECLARE @Supera BIT
+SET @Supera = [dbo].ComprobarSuperaMaximo (1, 10.59, 1, 2.00, '1', NULL, NULL)
+PRINT @Supera
+GO
+
+
 --TRIGGERS
 
 --Trigger que controla que no se puedan modificar ni eliminar apuestas ya realizadas.
 CREATE TRIGGER ModificarApuesta ON BET_Apuestas INSTEAD OF UPDATE, DELETE AS
 	BEGIN
-
+		
 		DECLARE @Message NVARCHAR(255) = FormatMessage(55000);
+
+		IF UPDATE (Acertada) AND NOT UPDATE (Tipo) AND NOT UPDATE (Cuota) AND NOT UPDATE (CantidadApostada) AND NOT UPDATE (IDPartido)
+		AND NOT UPDATE (CorreoUsuario) AND NOT UPDATE (Resultado) AND NOT UPDATE ([Over/under]) AND NOT UPDATE (GolesLocal_Visitante)
+
+			BEGIN
+
+				UPDATE BET_Apuestas 
+				SET Acertada = I.Acertada
+				FROM inserted AS I 
+				WHERE BET_Apuestas.ID = I.ID
+
+			END
+
+		ELSE
+		
 		THROW 55000, @Message, 1
 
 	END
@@ -384,7 +428,7 @@ GO
 
 --Trigger que comprueba que, al realizar una apuesta, el partido al que se apuesta, sea apostable. 
 --En caso de que no se pueda apostar, lanzará un mensaje.
-CREATE TRIGGER ComprobarPartidoApostable ON BET_Apuestas INSTEAD OF INSERT AS
+CREATE TRIGGER ComprobarPartidoApostable ON BET_Apuestas AFTER INSERT AS
 	BEGIN
 		
 		DECLARE @FechaPartido SMALLDATETIME
@@ -394,7 +438,7 @@ CREATE TRIGGER ComprobarPartidoApostable ON BET_Apuestas INSTEAD OF INSERT AS
 		IF(CAST(GETDATE() AS smalldatetime) < DATEADD(DAY, -2, @FechaPartido) OR CAST(GETDATE() AS smalldatetime) > @FechaPartido)
 
 			BEGIN
-
+				ROLLBACK
 				DECLARE @Message NVARCHAR(255) = FormatMessage(57000);
 				THROW 57000, @Message, 1
 
@@ -404,7 +448,7 @@ CREATE TRIGGER ComprobarPartidoApostable ON BET_Apuestas INSTEAD OF INSERT AS
 GO
 
 --Trigger que muestra un mensaje de confirmación de que se ha realizado la apuesta.
-CREATE TRIGGER ConfirmacionApueta ON BET_Apuestas AFTER INSERT AS
+CREATE TRIGGER ConfirmacionApuesta ON BET_Apuestas AFTER INSERT AS
 	
 	BEGIN
 
